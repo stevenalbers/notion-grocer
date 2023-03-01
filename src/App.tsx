@@ -1,4 +1,8 @@
-import { BaseSyntheticEvent, useState } from "react";
+import { BaseSyntheticEvent, useEffect, useState } from "react";
+import { Client } from "@notionhq/client";
+
+const notion = new Client({ auth: process.env.NOTION_KEY });
+const databaseId = process.env.NOTION_DATABASE_ID;
 
 interface Item {
   name: string;
@@ -13,6 +17,32 @@ export function App() {
   ];
   const [items, setItems] = useState<Item[]>(defaultList);
   const [currentItem, setCurrentItem] = useState(items[0]);
+
+  useEffect(() => {
+    tryNotion("new line");
+  }, []);
+
+  const tryNotion = async (text) => {
+    try {
+      const response = await notion.pages.create({
+        parent: { database_id: databaseId },
+        properties: {
+          title: {
+            title: [
+              {
+                text: {
+                  content: text,
+                },
+              },
+            ],
+          },
+        },
+      });
+      console.log("Success! Entry added.", response);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleStockClick = (e: BaseSyntheticEvent) => {
     const updatedItems = items.map((item) => {
