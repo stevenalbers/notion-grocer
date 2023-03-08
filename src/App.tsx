@@ -1,53 +1,58 @@
+import { updatePage } from "@notionhq/client/build/src/api-endpoints";
 import { BaseSyntheticEvent, useEffect, useState } from "react";
-import { Client } from "@notionhq/client";
-
-const notion = new Client({ auth: process.env.NOTION_KEY });
-const databaseId = process.env.NOTION_DATABASE_ID;
+import { queryDatabase, updateStock } from "./utils/notion";
 
 interface Item {
+  id: string;
   name: string;
-  amount: "Out" | "Low" | "Stocked";
+  amount: string;
 }
 
 export function App() {
-  const defaultList: Item[] = [
-    { name: "Eggs", amount: "Stocked" },
-    { name: "Milk", amount: "Stocked" },
-    { name: "Butter", amount: "Stocked" },
-  ];
-  const [items, setItems] = useState<Item[]>(defaultList);
-  const [currentItem, setCurrentItem] = useState(items[0]);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<Item[]>([]);
+  const [currentItem, setCurrentItem] = useState(null);
 
   useEffect(() => {
-    tryNotion("new line");
+    (async () => {
+      const list = await retrieveGroceryList();
+
+      setItems(list);
+      setCurrentItem(list[0]);
+      setLoading(false);
+    })();
   }, []);
 
-  const tryNotion = async (text) => {
+  const retrieveGroceryList = async () => {
     try {
-      const response = await notion.pages.create({
-        parent: { database_id: databaseId },
-        properties: {
-          title: {
-            title: [
-              {
-                text: {
-                  content: text,
-                },
-              },
-            ],
-          },
-        },
+      const database = await queryDatabase();
+      const list = Object.values(database.results).map((entry) => {
+        if ("properties" in entry) {
+          if ("title" in entry.properties.Name && "select" in entry.properties.Quantity) {
+            return {
+              id: entry.id,
+              name: entry.properties.Name.title[0].plain_text,
+              amount: entry.properties.Quantity.select.name,
+            };
+          }
+        }
       });
-      console.log("Success! Entry added.", response);
+      return list;
     } catch (e) {
       console.error(e);
     }
   };
 
+  const updateGroceryList = async () => {
+    items.forEach(async (item) => {
+      await updateStock(item.id, item.amount);
+    });
+  };
+
   const handleStockClick = (e: BaseSyntheticEvent) => {
     const updatedItems = items.map((item) => {
       if (item.name === currentItem.name) {
-        return { name: currentItem.name, amount: e.target.id };
+        return { id: currentItem.id, name: currentItem.name, amount: e.target.id };
       }
       return item;
     });
@@ -62,13 +67,15 @@ export function App() {
   };
 
   const renderShoppingList = () => {
-    const shoppingList = items
-      .filter((item) => item.amount !== "Stocked")
-      .map((item) => (
-        <li key={item.name}>
-          {item.name}: {item.amount}
-        </li>
-      ));
+    const shoppingList = items.map((item) => (
+      <li key={item.name}>
+        {item.name}: {item.amount}
+      </li>
+    ));
+
+    if (shoppingList.length > 0) {
+      updateGroceryList();
+    }
 
     return shoppingList.length > 0 ? (
       <>
@@ -80,7 +87,9 @@ export function App() {
     );
   };
 
-  return (
+  return loading ? (
+    <div className="h-full bg-gray-100 flex flex-col items-center justify-center"></div>
+  ) : (
     <div className="h-full bg-gray-100 flex flex-col items-center justify-center">
       {currentItem && (
         <>
